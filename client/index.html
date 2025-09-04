@@ -9,8 +9,23 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background: #000;
             font-family: Arial, sans-serif;
+            position: relative;
+        }
+        
+        /* 创建模糊背景层 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -20px;
+            left: -20px;
+            right: -20px;
+            bottom: -20px;
+            background: 
+                linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
+                url('https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80') center/cover;
+            filter: blur(3px);
+            z-index: -1;
         }
         
         /* 得分动画 */
@@ -1498,6 +1513,9 @@
                     return this.otherPlayers.get(playerId);
                 }
                 
+                // 计算显示名称（避免重复声明）
+                const displayName = playerName || playerId.substring(0, 8);
+                
                 const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
                 const playerMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff66 }); // 绿色真人玩家
                 const otherPlayer = new THREE.Mesh(playerGeometry, playerMaterial);
@@ -1512,7 +1530,7 @@
                 // 添加玩家属性（真人玩家标记）
                 otherPlayer.userData = {
                     id: playerId,
-                    name: playerName || playerId.substring(0, 8),
+                    name: displayName,
                     isRealPlayer: true, // 标记为真人玩家
                     health: 100,
                     maxHealth: 100,
@@ -1524,7 +1542,7 @@
                 // 初始化玩家得分数据
                 if (!this.playerScores.has(playerId)) {
                     this.playerScores.set(playerId, {
-                        name: playerName || playerId.substring(0, 8),
+                        name: displayName,
                         kills: 0,
                         deaths: 0,
                         score: 0
@@ -1543,7 +1561,6 @@
                 context.fillStyle = '#ffffff';
                 context.font = 'bold 20px Arial';
                 context.textAlign = 'center';
-                const displayName = playerName || playerId.substring(0, 8);
                 context.fillText('👤 ' + displayName, 128, 40);
                 
                 const texture = new THREE.CanvasTexture(canvas);
@@ -1564,7 +1581,6 @@
                 console.log('🗺️ 当前场景中玩家数量 - 真人:', this.getRealPlayersCount(), '总数:', this.otherPlayers.size);
                 
                 // 欢迎消息
-                const displayName = playerName || playerId.substring(0, 8);
                 this.showPlayerJoinMessage(displayName);
                 
                 return otherPlayer;
@@ -2074,7 +2090,10 @@
                 // 显示NPC
                 npc.visible = true;
                 
-                // 更新血条
+                // 显示并更新血条
+                if (npc.userData.healthBar) {
+                    npc.userData.healthBar.visible = true;
+                }
                 this.updateHealthBar(npc);
                 
                 console.log('🔄 NPC重生:', userData.name);
@@ -2386,7 +2405,12 @@
                 
                 console.log('🎮 多人模式:', this.isMultiplayer);
                 
-                document.getElementById('roomDisplay').textContent = roomId;
+                // 显示适当的房间信息
+                if (this.isMultiplayer) {
+                    document.getElementById('roomDisplay').textContent = '全球大厅';
+                } else {
+                    document.getElementById('roomDisplay').textContent = roomId;
+                }
                 document.getElementById('instructions').style.display = 'block';
                 
                 // 初始化玩家数量显示和NPC
@@ -2750,7 +2774,7 @@
                 setTimeout(() => {
                     button.innerHTML = originalText;
                     button.style.background = '#28a745';
-                }, 2000);
+                }, 5000); // 延长到5秒，给用户更多时间操作
             }).catch(err => {
                 console.error('复制失败:', err);
                 // 备用方法：选择文本
