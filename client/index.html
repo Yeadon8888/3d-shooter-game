@@ -12,6 +12,14 @@
             background: #000;
             font-family: Arial, sans-serif;
         }
+        
+        /* 得分动画 */
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+        }
         #gameContainer {
             width: 100vw;
             height: 100vh;
@@ -178,6 +186,9 @@
                 this.setupControls();
                 this.setupSounds();
                 this.animate();
+                
+                // 初始化得分系统
+                this.initScoreSystem();
                 
                 console.log('✅ 3D场景初始化完成！');
             }
@@ -682,6 +693,14 @@
                             🔄 RELOADING...
                         </div>
                         
+                        <!-- 左上角排行榜 -->
+                        <div id="leaderboard" style="position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; min-width: 200px;">
+                            <div style="color: #ffaa00; font-size: 14px; font-weight: bold; margin-bottom: 8px; text-align: center;">🏆 排行榜</div>
+                            <div id="leaderboardList">
+                                <div style="color: #ffffff; font-size: 12px;">等待玩家数据...</div>
+                            </div>
+                        </div>
+
                         <!-- 右上角房间信息 -->
                         <div style="position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
                             <div style="color: #88ff88; font-size: 12px;">ROOM: <span id="roomDisplay">--</span></div>
@@ -1006,19 +1025,39 @@
                             console.log('🩸 玩家被', bullet.userData.shooterName, '击中，伤害:', bullet.userData.damage);
                         }
                     }
-                    // 玩家子弹与NPC的碰撞检测
+                    // 玩家子弹与其他玩家的碰撞检测
                     else if (!bullet.userData.isNPCBullet) {
-                        this.otherPlayers.forEach((npc, npcId) => {
-                            if (npc.userData && npc.userData.isNPC && npc.userData.isAlive) {
-                                const distance = bullet.position.distanceTo(npc.position);
+                        this.otherPlayers.forEach((player, playerId) => {
+                            if (player.userData && player.userData.isAlive) {
+                                const distance = bullet.position.distanceTo(player.position);
                                 if (distance < 1.2) {
-                                    // 玩家子弹命中NPC
-                                    this.npcTakeDamage(npc, 25); // 玩家伤害25
-                                    this.createHitEffect(bullet.position, 0x00ff00);
+                                    if (player.userData.isNPC) {
+                                        // 玩家子弹命中NPC
+                                        this.npcTakeDamage(player, 25); // 玩家伤害25
+                                        this.createHitEffect(bullet.position, 0x00ff00);
+                                        console.log('🎯 玩家击中NPC:', player.userData.name);
+                                    } else if (player.userData.isRealPlayer) {
+                                        // 玩家子弹命中真人玩家
+                                        this.createHitEffect(bullet.position, 0xff8800);
+                                        console.log('🎯 玩家击中真人玩家:', player.userData.name);
+                                        
+                                        // 发送伤害事件到服务器
+                                        if (this.isMultiplayer && socket.connected) {
+                                            socket.emit('playerHit', {
+                                                targetId: playerId,
+                                                damage: 25,
+                                                shooterId: socket.id
+                                            });
+                                        }
+                                        
+                                        // 假设击杀并给予得分（实际游戏中应该由服务器确认击杀）
+                                        // 这里为了demo效果，直接给予击杀得分
+                                        this.addLocalScore('kill', 200, player.userData.name);
+                                    }
+                                    
                                     this.scene.remove(bullet);
                                     this.bullets.splice(i, 1);
                                     bulletRemoved = true;
-                                    console.log('🎯 玩家击中NPC:', npc.userData.name);
                                     return; // 跳出forEach
                                 }
                             }
@@ -1455,6 +1494,16 @@
                     lastUpdateTime: Date.now()
                 };
                 
+                // 初始化玩家得分数据
+                if (!this.playerScores.has(playerId)) {
+                    this.playerScores.set(playerId, {
+                        name: playerName || playerId.substring(0, 8),
+                        kills: 0,
+                        deaths: 0,
+                        score: 0
+                    });
+                }
+                
                 // 添加玩家名称标签（蓝色边框表示真人）
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
@@ -1540,6 +1589,127 @@
                 
                 console.log('🔄 同步玩家列表显示 - 真人玩家:', realPlayers, '总数(含自己):', totalPlayers);
                 return totalPlayers;
+            }
+            
+            // 初始化得分系统
+            initScoreSystem() {
+                // 玩家得分状态
+                this.playerScores = new Map();
+                this.localPlayerScore = { kills: 0, deaths: 0, score: 0, name: '我' };
+                
+                // 初始化自己的得分
+                this.playerScores.set('local', this.localPlayerScore);
+                
+                // 定期更新排行榜显示
+                setInterval(() => {
+                    this.updateLeaderboard();
+                }, 1000);
+                
+                console.log('🏆 得分系统初始化完成');
+            }
+            
+            // 更新排行榜显示
+            updateLeaderboard() {
+                const leaderboardList = document.getElementById('leaderboardList');
+                if (!leaderboardList) return;
+                
+                // 获取所有玩家得分并排序
+                const scores = Array.from(this.playerScores.values()).sort((a, b) => b.score - a.score);
+                
+                if (scores.length === 0) {
+                    leaderboardList.innerHTML = '<div style="color: #ffffff; font-size: 12px;">等待玩家数据...</div>';
+                    return;
+                }
+                
+                let html = '';
+                scores.forEach((player, index) => {
+                    const rank = index + 1;
+                    const rankColor = rank === 1 ? '#ffaa00' : rank === 2 ? '#c0c0c0' : rank === 3 ? '#cd7f32' : '#ffffff';
+                    const isLocal = player.name === '我';
+                    const nameStyle = isLocal ? 'color: #00ff00; font-weight: bold;' : `color: ${rankColor};`;
+                    
+                    html += `
+                        <div style="margin-bottom: 4px; font-size: 11px;">
+                            <span style="color: ${rankColor}; font-weight: bold;">#${rank}</span>
+                            <span style="${nameStyle}">${player.name}</span>
+                            <span style="color: #ffffff; float: right;">${player.score}</span>
+                        </div>
+                        <div style="margin-left: 20px; font-size: 9px; color: #aaaaaa; margin-bottom: 6px;">
+                            💀${player.kills} ☠️${player.deaths}
+                        </div>
+                    `;
+                });
+                
+                leaderboardList.innerHTML = html;
+            }
+            
+            // 玩家得分
+            addPlayerScore(playerId, playerName, scoreType, points = 200) {
+                if (!this.playerScores.has(playerId)) {
+                    this.playerScores.set(playerId, {
+                        name: playerName || playerId.substring(0, 8),
+                        kills: 0,
+                        deaths: 0,
+                        score: 0
+                    });
+                }
+                
+                const playerScore = this.playerScores.get(playerId);
+                
+                if (scoreType === 'kill') {
+                    playerScore.kills++;
+                    playerScore.score += points;
+                    
+                    // 显示得分提示
+                    this.showScoreNotification(playerScore.name, `+${points} 击杀!`, '#ff0000');
+                }
+                
+                console.log(`🏆 玩家 ${playerScore.name} 得分更新:`, playerScore);
+                this.updateLeaderboard();
+            }
+            
+            // 本地玩家得分（击杀NPC或真人）
+            addLocalScore(scoreType, points = 200, targetName = '') {
+                if (scoreType === 'kill') {
+                    this.localPlayerScore.kills++;
+                    this.localPlayerScore.score += points;
+                    
+                    // 显示得分提示
+                    this.showScoreNotification('你', `+${points} 击杀 ${targetName}!`, '#00ff00');
+                    
+                    // 通知服务器得分
+                    if (this.isMultiplayer && socket.connected) {
+                        socket.emit('playerScore', {
+                            scoreType: 'kill',
+                            points: points,
+                            targetName: targetName
+                        });
+                    }
+                }
+                
+                this.updateLeaderboard();
+            }
+            
+            // 显示得分通知
+            showScoreNotification(playerName, message, color) {
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    background: rgba(0,0,0,0.8); color: ${color}; padding: 10px 20px;
+                    border-radius: 5px; font-size: 16px; font-weight: bold;
+                    z-index: 1000; border: 2px solid ${color};
+                    animation: fadeInOut 2s ease-in-out;
+                `;
+                
+                notification.textContent = `${playerName}: ${message}`;
+                document.body.appendChild(notification);
+                
+                // 2秒后移除通知
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 2000);
             }
             
             // 显示玩家加入消息
@@ -1912,12 +2082,34 @@
             playerDeath(killerName) {
                 console.log('💀 玩家死亡，击杀者:', killerName);
                 
-                // 更新NPC击杀统计
-                this.otherPlayers.forEach((npc, npcId) => {
-                    if (npc.userData && npc.userData.isNPC && npc.userData.name === killerName) {
-                        npc.userData.kills++;
+                // 更新本地玩家死亡统计
+                this.localPlayerScore.deaths++;
+                
+                // 检查击杀者是否为真人玩家，如果是则发送得分事件
+                let isRealPlayerKill = false;
+                this.otherPlayers.forEach((player, playerId) => {
+                    if (player.userData && player.userData.isRealPlayer && player.userData.name === killerName) {
+                        isRealPlayerKill = true;
+                        console.log('🏆 真人玩家击杀了本地玩家:', killerName);
                     }
                 });
+                
+                // 更新NPC击杀统计（对于NPC击杀）
+                if (!isRealPlayerKill) {
+                    this.otherPlayers.forEach((npc, npcId) => {
+                        if (npc.userData && npc.userData.isNPC && npc.userData.name === killerName) {
+                            npc.userData.kills++;
+                        }
+                    });
+                }
+                
+                // 多人联机模式下发送死亡事件
+                if (this.isMultiplayer && socket.connected) {
+                    socket.emit('playerDeath', {
+                        killerId: killerName,  // 这里应该是玩家ID而不是名字
+                        killerName: killerName
+                    });
+                }
                 
                 // 重生玩家
                 setTimeout(() => {
@@ -1926,6 +2118,9 @@
                 
                 // 显示死亡信息
                 this.showDeathMessage(killerName);
+                
+                // 更新排行榜
+                this.updateLeaderboard();
             }
             
             // NPC死亡
@@ -1942,11 +2137,14 @@
                     npc.userData.healthBar.visible = false;
                 }
                 
-                // 更新玩家击杀统计
+                // 更新玩家击杀统计和得分
                 this.gameStats.kills++;
                 this.updateHUD();
                 
-                console.log('🏆 玩家击杀数:', this.gameStats.kills);
+                // 添加击杀得分 - NPC击杀得100分
+                this.addLocalScore('kill', 100, npc.userData.name);
+                
+                console.log('🏆 击杀NPC:', npc.userData.name, '获得100分');
             }
             
             // 玩家重生
@@ -2143,11 +2341,15 @@
             
             // 多人联机：发送射击事件
             sendShootEvent() {
-                if (!this.isMultiplayer || !socket.connected) return;
+                if (!this.isMultiplayer || !socket.connected) {
+                    console.log('⚠️ 射击事件未发送: isMultiplayer=', this.isMultiplayer, 'connected=', socket.connected);
+                    return;
+                }
                 
                 const direction = new THREE.Vector3();
                 this.camera.getWorldDirection(direction);
                 
+                console.log('🔫 发送射击事件到服务器');
                 socket.emit('playerShoot', {
                     position: {
                         x: this.player.position.x,
@@ -2202,6 +2404,7 @@
                 
                 // 其他玩家射击
                 socket.on('playerShot', (data) => {
+                    console.log('🔫 收到玩家射击事件:', data.playerId, data.position);
                     this.showOtherPlayerShot(data.playerId, data.position, data.direction);
                 });
                 
@@ -2213,6 +2416,12 @@
                 // 玩家死亡
                 socket.on('playerDied', (data) => {
                     console.log('💀 玩家死亡:', data);
+                });
+                
+                // 其他玩家得分
+                socket.on('playerScored', (data) => {
+                    console.log('🏆 收到玩家得分事件:', data);
+                    this.addPlayerScore(data.playerId, data.playerName, data.scoreType, data.points);
                 });
                 
                 console.log('🌐 多人联机事件监听设置完成');

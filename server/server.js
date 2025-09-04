@@ -226,23 +226,24 @@ io.on('connection', (socket) => {
                 
                 console.log('👤 玩家加入房间:', sanitizedName, '房间:', roomId);
                 
-                // 为新玩家发送房间内现有的所有其他玩家
-                room.players.forEach(existingPlayer => {
-                    if (existingPlayer.id !== socket.id) {
-                        socket.emit('playerJoined', {
-                            playerId: existingPlayer.id,
-                            playerName: existingPlayer.name,
-                            playersCount: room.players.length
-                        });
-                    }
+                // 为新玩家发送房间内现有的所有其他玩家（在玩家加入之前获取）
+                const existingPlayers = room.players.filter(p => p.id !== socket.id);
+                existingPlayers.forEach(existingPlayer => {
+                    socket.emit('playerJoined', {
+                        playerId: existingPlayer.id,
+                        playerName: existingPlayer.name,
+                        playersCount: room.players.length
+                    });
                 });
                 
-                // 通知房间内所有玩家有新玩家加入
+                // 通知房间内所有玩家（包括新玩家）有新玩家加入
                 io.to(roomId).emit('playerJoined', {
                     playerId: socket.id,
                     playerName: sanitizedName,
                     playersCount: room.players.length
                 });
+                
+                console.log(`📊 房间${roomId}更新: 向新玩家发送了${existingPlayers.length}个现有玩家`);
                 
                 socket.emit('joinedRoom', { roomId, playersCount: room.players.length });
             } else {
@@ -326,6 +327,24 @@ io.on('connection', (socket) => {
                 timestamp: Date.now()
             });
             console.log('💀 玩家死亡:', socket.id);
+        }
+    });
+
+    // 玩家得分事件
+    socket.on('playerScore', (data) => {
+        const player = players.get(socket.id);
+        if (player) {
+            console.log('🏆 玩家得分:', player.name, data);
+            
+            // 广播得分事件给房间内所有玩家
+            io.to(player.roomId).emit('playerScored', {
+                playerId: socket.id,
+                playerName: player.name,
+                scoreType: data.scoreType,
+                points: data.points,
+                targetName: data.targetName,
+                timestamp: Date.now()
+            });
         }
     });
 
