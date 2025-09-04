@@ -1037,9 +1037,19 @@
                                         this.createHitEffect(bullet.position, 0x00ff00);
                                         console.log('🎯 玩家击中NPC:', player.userData.name);
                                     } else if (player.userData.isRealPlayer) {
-                                        // 玩家子弹命中真人玩家
+                                        // 玩家子弹命中真人玩家 - 逐渐扣血
                                         this.createHitEffect(bullet.position, 0xff8800);
                                         console.log('🎯 玩家击中真人玩家:', player.userData.name);
+                                        
+                                        // 扣血逻辑 - 每次扣25血
+                                        player.userData.health -= 25;
+                                        player.userData.health = Math.max(0, player.userData.health);
+                                        
+                                        // 显示伤害数字
+                                        this.createDamageNumber(bullet.position, 25, 0xff0000);
+                                        
+                                        // 更新血条显示
+                                        this.updatePlayerHealthBar(player);
                                         
                                         // 发送伤害事件到服务器
                                         if (this.isMultiplayer && socket.connected) {
@@ -1050,9 +1060,22 @@
                                             });
                                         }
                                         
-                                        // 假设击杀并给予得分（实际游戏中应该由服务器确认击杀）
-                                        // 这里为了demo效果，直接给予击杀得分
-                                        this.addLocalScore('kill', 200, player.userData.name);
+                                        // 检查是否死亡
+                                        if (player.userData.health <= 0) {
+                                            console.log('💀 真人玩家死亡:', player.userData.name);
+                                            this.addLocalScore('kill', 200, player.userData.name);
+                                            
+                                            // 标记为死亡状态
+                                            player.userData.isAlive = false;
+                                            player.visible = false;
+                                            
+                                            // 5秒后复活
+                                            setTimeout(() => {
+                                                this.respawnRealPlayer(player);
+                                            }, 5000);
+                                        }
+                                        
+                                        console.log('🩸 真人玩家血量:', player.userData.name, player.userData.health);
                                     }
                                     
                                     this.scene.remove(bullet);
@@ -1136,6 +1159,9 @@
                     // 增加分数
                     this.score += 100;
                     
+                    // 添加到排行榜得分系统 - 击杀小球得50分
+                    this.addLocalScore('kill', 50, '小球敌人#' + enemyIndex);
+                    
                     // 创建爆炸效果
                     this.createExplosion(hitPosition);
                     
@@ -1144,7 +1170,7 @@
                         showKillNotification('你', '敌人#' + enemyIndex, 'AK-47');
                     }
                     
-                    console.log('💀 击杀敌人！得分:', this.score, '击杀数:', this.gameStats.kills);
+                    console.log('💀 击杀敌人！得分:', this.score, '击杀数:', this.gameStats.kills, '排行榜得分: +50');
                     
                     // 生成新敌人
                     setTimeout(() => {
@@ -1469,7 +1495,7 @@
                 // 检查是否已存在
                 if (this.otherPlayers.has(playerId)) {
                     console.log('⚠️ 玩家已存在，跳过创建:', playerId);
-                    return;
+                    return this.otherPlayers.get(playerId);
                 }
                 
                 const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
@@ -1491,7 +1517,8 @@
                     health: 100,
                     maxHealth: 100,
                     isAlive: true,
-                    lastUpdateTime: Date.now()
+                    lastUpdateTime: Date.now(),
+                    type: 'realPlayer' // 明确类型标识
                 };
                 
                 // 初始化玩家得分数据
@@ -1503,6 +1530,8 @@
                         score: 0
                     });
                 }
+                
+                console.log('🔧 玩家属性设置完成:', otherPlayer.userData);
                 
                 // 添加玩家名称标签（蓝色边框表示真人）
                 const canvas = document.createElement('canvas');
@@ -1535,7 +1564,10 @@
                 console.log('🗺️ 当前场景中玩家数量 - 真人:', this.getRealPlayersCount(), '总数:', this.otherPlayers.size);
                 
                 // 欢迎消息
+                const displayName = playerName || playerId.substring(0, 8);
                 this.showPlayerJoinMessage(displayName);
+                
+                return otherPlayer;
             }
             
             // 为真人玩家创建血条
@@ -1564,6 +1596,66 @@
                 player.userData.healthBar = healthBar;
                 player.userData.healthCanvas = canvas;
                 player.userData.healthContext = context;
+            }
+            
+            // 更新真人玩家血条
+            updatePlayerHealthBar(player) {
+                if (!player.userData.healthContext || !player.userData.healthBar) return;
+                
+                const context = player.userData.healthContext;
+                const healthBar = player.userData.healthBar;
+                
+                // 清除血条
+                context.clearRect(0, 0, 100, 8);
+                
+                // 绘制背景
+                context.fillStyle = 'rgba(0,0,0,0.8)';
+                context.fillRect(0, 0, 100, 8);
+                
+                // 计算血量百分比
+                const healthPercent = player.userData.health / player.userData.maxHealth;
+                const healthWidth = 96 * healthPercent;
+                
+                // 根据血量选择颜色
+                if (healthPercent > 0.6) {
+                    context.fillStyle = '#00ff00'; // 绿色
+                } else if (healthPercent > 0.3) {
+                    context.fillStyle = '#ffff00'; // 黄色
+                } else {
+                    context.fillStyle = '#ff0000'; // 红色
+                }
+                
+                context.fillRect(2, 2, healthWidth, 4);
+                
+                // 更新纹理
+                healthBar.material.map.needsUpdate = true;
+            }
+            
+            // 复活真人玩家
+            respawnRealPlayer(player) {
+                if (!player || !player.userData) return;
+                
+                console.log('⚡ 复活真人玩家:', player.userData.name);
+                
+                // 恢复血量和状态
+                player.userData.health = player.userData.maxHealth;
+                player.userData.isAlive = true;
+                player.visible = true;
+                
+                // 重置位置
+                player.position.set(
+                    Math.random() * 10 - 5,
+                    1,
+                    Math.random() * 10 - 5
+                );
+                
+                // 更新血条
+                this.updatePlayerHealthBar(player);
+                
+                // 显示血条
+                if (player.userData.healthBar) {
+                    player.userData.healthBar.visible = true;
+                }
             }
             
             // 获取真人玩家数量
@@ -2569,12 +2661,10 @@
                     <p>🎮 连接ID: ${socket.id}</p>
                     <div style="margin: 30px 0;">
                         <button class="menuButton" onclick="startSinglePlayer()">🎮 单机测试模式</button>
+                        <br><br>
+                        <input type="text" id="playerNameInput" class="inputField" placeholder="输入你的名字" maxlength="20" value="玩家${socket.id.substring(0, 4)}">
                         <br>
-                        <button class="menuButton" onclick="createRoom()">🏠 创建房间</button>
-                        <br>
-                        <input type="text" id="roomIdInput" class="inputField" placeholder="输入房间号" maxlength="6">
-                        <br>
-                        <button class="menuButton" onclick="joinRoom()">👥 加入房间</button>
+                        <button class="menuButton" onclick="joinMultiplayerGame()" style="background: linear-gradient(45deg, #ff6b6b, #ffd93d); font-size: 18px;">🌍 加入全球游戏大厅</button>
                     </div>
                     <div id="menuResult" style="color: #00ff00; margin-top: 20px;"></div>
                 </div>
@@ -2599,56 +2689,39 @@
         }
 
         // 创建房间
-        function createRoom() {
-            socket.emit('createRoom');
-            document.getElementById('menuResult').textContent = '🔄 正在创建房间...';
-        }
-
-        // 加入房间
-        function joinRoom() {
-            const roomId = document.getElementById('roomIdInput').value.trim().toUpperCase();
-            if (!roomId) {
-                alert('请输入房间号！');
+        // 加入全球多人游戏大厅
+        function joinMultiplayerGame() {
+            const playerName = document.getElementById('playerNameInput').value.trim();
+            if (!playerName) {
+                alert('请输入你的名字！');
                 return;
             }
             
-            socket.emit('joinRoom', { 
-                roomId: roomId, 
-                playerName: '玩家' + Math.floor(Math.random() * 1000)
+            socket.emit('joinGame', { 
+                playerName: playerName
             });
-            document.getElementById('menuResult').textContent = '🔄 正在加入房间...';
+            document.getElementById('menuResult').textContent = '🔄 正在加入全球游戏大厅...';
         }
 
-        // Socket事件处理
-        socket.on('roomCreated', (data) => {
-            const copyButton = `<button onclick="copyRoomId('${data.roomId}')" style="
-                background: #28a745; color: white; border: none; padding: 8px 16px; 
-                border-radius: 4px; cursor: pointer; margin: 10px 5px;
-                font-size: 14px; transition: background-color 0.3s;">
-                📋 复制房间号
-            </button>`;
-            
+        // Socket事件处理 - 新的UID系统
+        socket.on('joinedGame', (data) => {
             document.getElementById('menuResult').innerHTML = 
-                `🏠 房间创建成功！<br>
-                房间号: <strong style="font-size: 24px; color: #00ff00;">${data.roomId}</strong><br>
-                ${copyButton}<br>
-                <div id="countdown" style="font-size: 20px; color: #ffff00; margin-top: 10px;">
-                    5秒后自动进入游戏...
-                </div>`;
-            
-            startCountdown(5, () => startGame(data.roomId));
-        });
-
-        socket.on('joinedRoom', (data) => {
-            document.getElementById('menuResult').innerHTML = 
-                `👤 成功加入房间: <strong style="color: #00ff00; font-size: 18px;">${data.roomId}</strong><br>
-                当前人数: <strong style="color: #ffff00;">${data.playersCount}</strong><br>
+                `🌍 成功加入全球游戏大厅！<br>
+                玩家ID: <strong style="color: #00ff00;">${data.playerUID}</strong><br>
+                玩家名称: <strong style="color: #ffff00;">${data.playerName}</strong><br>
+                在线人数: <strong style="color: #ff8800;">${data.playersCount}</strong><br>
                 <div id="countdown" style="font-size: 20px; color: #ffff00; margin-top: 10px;">
                     3秒后自动进入游戏...
                 </div>`;
             
-            startCountdown(3, () => startGame(data.roomId));
+            // 存储玩家UID
+            window.currentPlayerUID = data.playerUID;
+            window.currentPlayerName = data.playerName;
+            
+            startCountdown(3, () => startGame('global'));
         });
+
+        // 旧的joinedRoom事件已移除，现在使用joinedGame
 
         socket.on('error', (error) => {
             document.getElementById('menuResult').innerHTML = 
@@ -2780,8 +2853,8 @@
         }
 
         // 启动3D游戏
-        function startGame(roomId) {
-            console.log('🎮 启动3D游戏，房间:', roomId);
+        function startGame(gameMode) {
+            console.log('🎮 启动3D游戏，模式:', gameMode);
             
             // 检查THREE.js是否可用
             if (typeof THREE === 'undefined') {
@@ -2792,7 +2865,14 @@
             try {
                 // 创建游戏实例
                 window.gameInstance = new Game();
-                window.gameInstance.startGame(roomId);
+                
+                // 传递玩家UID信息
+                if (gameMode === 'global') {
+                    window.gameInstance.playerUID = window.currentPlayerUID;
+                    window.gameInstance.playerName = window.currentPlayerName;
+                }
+                
+                window.gameInstance.startGame(gameMode);
             } catch (error) {
                 console.error('❌ 游戏启动失败:', error);
                 alert('游戏启动失败：' + error.message);

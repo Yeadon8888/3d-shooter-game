@@ -70,10 +70,10 @@ console.log('📡 传输方式: polling only (WebSocket已禁用)');
 console.log('🌍 CORS: 允许所有来源');
 console.log('⚙️ 环境:', process.env.NODE_ENV || 'development');
 
-// 存储游戏房间和玩家信息
-const gameRooms = new Map();
-const players = new Map();
+// 存储玩家信息 - 简化为全局游戏大厅模式
+const players = new Map(); // playerUID -> { socketId, name, joinTime, position, health }
 const playerActivity = new Map(); // 跟踪玩家活动以防滥用
+const globalRoom = 'global'; // 所有玩家都在全局房间
 
 // 输入验证函数
 function validatePlayerInput(data) {
@@ -112,9 +112,19 @@ function checkRateLimit(socketId, action, limit = 60, window = 60000) {
     return activity.count <= limit;
 }
 
-// 生成随机房间号
-function generateRoomId() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+// 生成唯一玩家UID
+function generatePlayerUID() {
+    return 'player_' + Math.random().toString(36).substring(2, 15);
+}
+
+// 通过socketId查找玩家UID
+function findPlayerUIDBySocket(socketId) {
+    for (const [uid, player] of players) {
+        if (player.socketId === socketId) {
+            return uid;
+        }
+    }
+    return null;
 }
 
 // 基础路由 - 检查服务器状态
@@ -131,14 +141,15 @@ app.get('/', (req, res) => {
 app.get('/api/status', (req, res) => {
     res.json({
         status: 'online',
-        message: '3D射击游戏服务器在线',
-        rooms: Array.from(gameRooms.entries()).map(([id, room]) => ({
-            id,
-            players: room.players.length,
-            createdAt: room.createdAt
-        })),
+        message: '3D射击游戏服务器在线 - 全局大厅模式',
         totalPlayers: players.size,
+        connectedSockets: io.engine.clientsCount,
         uptime: process.uptime(),
+        players: Array.from(players.entries()).map(([uid, player]) => ({
+            uid,
+            name: player.name,
+            joinTime: player.joinTime
+        })),
         socketio: {
             connected: io.engine.clientsCount,
             version: require('socket.io/package.json').version
@@ -158,102 +169,72 @@ app.get('/socket.io/test', (req, res) => {
 // Socket.io 连接处理
 io.on('connection', (socket) => {
     console.log('🎯 新玩家连接:', socket.id);
-
-    // 玩家创建房间
-    socket.on('createRoom', () => {
-        const roomId = generateRoomId();
-        const creatorName = `房主${socket.id.substring(0, 4)}`;
-        
-        const room = {
-            id: roomId,
-            players: [{
-                id: socket.id,
-                name: creatorName,
-                joinTime: new Date()
-            }],
-            createdAt: new Date()
-        };
-        
-        gameRooms.set(roomId, room);
-        socket.join(roomId);
-        players.set(socket.id, { roomId, name: creatorName });
-        
-        console.log('🏠 房间创建:', roomId, '创建者:', creatorName);
-        
-        // 通知房间创建者 - 发送创建成功和自动加入事件
-        socket.emit('roomCreated', { roomId });
-        socket.emit('joinedRoom', { roomId, playersCount: room.players.length });
-        
-        console.log('ℹ️ 房主创建房间完成，等待其他玩家加入');
-    });
-
-    // 玩家加入房间
-    socket.on('joinRoom', (data) => {
+    
+    // 玩家加入全局游戏大厅
+    socket.on('joinGame', (data) => {
         try {
-            if (!data || typeof data !== 'object') {
-                socket.emit('error', { message: '无效的数据格式' });
-                return;
-            }
+            const playerName = data?.playerName || `玩家${socket.id.substring(0, 4)}`;
+            const sanitizedName = playerName.toString().substring(0, 20);
             
-            const { roomId, playerName } = data;
+            // 生成唯一UID
+            const playerUID = generatePlayerUID();
             
-            // 验证房间ID格式
-            if (!roomId || typeof roomId !== 'string' || roomId.length !== 6) {
-                socket.emit('error', { message: '无效的房间ID' });
-                return;
-            }
+            // 加入全局房间
+            socket.join(globalRoom);
             
-            // 验证玩家名称
-            const sanitizedName = playerName ? playerName.toString().substring(0, 20) : `玩家${socket.id.substring(0, 4)}`;
+            // 获取当前所有在线玩家
+            const existingPlayers = Array.from(players.values());
             
-            const room = gameRooms.get(roomId);
+            // 创建新玩家数据
+            const newPlayer = {
+                uid: playerUID,
+                socketId: socket.id,
+                name: sanitizedName,
+                joinTime: new Date(),
+                health: 100,
+                position: { x: 0, y: 1, z: 0 },
+                isAlive: true
+            };
             
-            if (room) {
-                // 检查房间是否已满
-                if (room.players.length >= 8) {
-                    socket.emit('error', { message: '房间已满' });
-                    return;
-                }
-                
-                socket.join(roomId);
-                room.players.push({
-                    id: socket.id,
-                    name: sanitizedName,
-                    joinTime: new Date()
+            // 存储玩家信息（以UID为键）
+            players.set(playerUID, newPlayer);
+            
+            console.log('👤 玩家加入游戏:', sanitizedName, 'UID:', playerUID);
+            
+            // 向新玩家发送所有现有玩家信息
+            console.log(`📊 向新玩家${sanitizedName}发送${existingPlayers.length}个现有玩家`);
+            existingPlayers.forEach(existingPlayer => {
+                socket.emit('playerJoined', {
+                    playerId: existingPlayer.uid,
+                    playerName: existingPlayer.name,
+                    playersCount: players.size
                 });
-                
-                players.set(socket.id, { roomId, name: sanitizedName });
-                
-                console.log('👤 玩家加入房间:', sanitizedName, '房间:', roomId);
-                
-                // 为新玩家发送房间内现有的所有其他玩家（在玩家加入之前获取）
-                const existingPlayers = room.players.filter(p => p.id !== socket.id);
-                existingPlayers.forEach(existingPlayer => {
-                    socket.emit('playerJoined', {
-                        playerId: existingPlayer.id,
-                        playerName: existingPlayer.name,
-                        playersCount: room.players.length
-                    });
-                });
-                
-                // 通知房间内所有玩家（包括新玩家）有新玩家加入
-                io.to(roomId).emit('playerJoined', {
-                    playerId: socket.id,
-                    playerName: sanitizedName,
-                    playersCount: room.players.length
-                });
-                
-                console.log(`📊 房间${roomId}更新: 向新玩家发送了${existingPlayers.length}个现有玩家`);
-                
-                socket.emit('joinedRoom', { roomId, playersCount: room.players.length });
-            } else {
-                socket.emit('error', { message: '房间不存在' });
-            }
+                console.log(`  -> 发送现有玩家: ${existingPlayer.name} (${existingPlayer.uid})`);
+            });
+            
+            // 通知所有玩家有新玩家加入
+            io.to(globalRoom).emit('playerJoined', {
+                playerId: playerUID,
+                playerName: sanitizedName,
+                playersCount: players.size
+            });
+            
+            // 确认加入成功
+            socket.emit('joinedGame', { 
+                playerUID, 
+                playerName: sanitizedName,
+                playersCount: players.size 
+            });
+            
+            console.log(`✅ 全局游戏大厅更新完成: ${players.size}人在线`);
+            
         } catch (error) {
-            console.error('加入房间错误:', error);
-            socket.emit('error', { message: '服务器错误' });
+            console.error('加入游戏错误:', error);
+            socket.emit('error', { message: '加入游戏失败' });
         }
     });
+
+    // 旧的房间系统已移除，现在使用全局UID系统
 
     // 玩家位置更新
     socket.on('playerMove', (data) => {
@@ -263,11 +244,17 @@ io.on('connection', (socket) => {
                 return; // 静默忽略过频繁的移动请求
             }
             
-            const player = players.get(socket.id);
+            // 通过socketId找到玩家UID
+            const playerUID = findPlayerUIDBySocket(socket.id);
+            const player = players.get(playerUID);
+            
             if (player && validatePlayerInput(data)) {
-                // 广播玩家位置给房间内其他玩家
-                socket.to(player.roomId).emit('playerMoved', {
-                    playerId: socket.id,
+                // 更新玩家位置
+                player.position = data.position;
+                
+                // 广播玩家位置给所有其他玩家
+                socket.to(globalRoom).emit('playerMoved', {
+                    playerId: playerUID,
                     position: data.position,
                     rotation: data.rotation,
                     timestamp: Date.now()
@@ -286,16 +273,18 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            const player = players.get(socket.id);
+            const playerUID = findPlayerUIDBySocket(socket.id);
+            const player = players.get(playerUID);
+            
             if (player && validatePlayerInput(data)) {
-                // 广播射击事件给房间内其他玩家
-                socket.to(player.roomId).emit('playerShot', {
-                    playerId: socket.id,
+                // 广播射击事件给所有其他玩家
+                socket.to(globalRoom).emit('playerShot', {
+                    playerId: playerUID,
                     position: data.position,
                     direction: data.direction,
                     timestamp: Date.now()
                 });
-                console.log('💥 玩家射击:', socket.id);
+                console.log('💥 玩家射击:', playerUID);
             }
         } catch (error) {
             console.error('玩家射击错误:', error);
@@ -304,41 +293,52 @@ io.on('connection', (socket) => {
 
     // 玩家受伤事件
     socket.on('playerHit', (data) => {
-        const player = players.get(socket.id);
+        const playerUID = findPlayerUIDBySocket(socket.id);
+        const player = players.get(playerUID);
         if (player) {
+            // 更新玩家血量
+            player.health = Math.max(0, player.health - (data.damage || 25));
+            
             // 广播受伤事件
-            socket.to(player.roomId).emit('playerWasHit', {
-                playerId: socket.id,
+            socket.to(globalRoom).emit('playerWasHit', {
+                playerId: playerUID,
                 damage: data.damage,
-                health: data.health,
+                health: player.health,
                 shooterId: data.shooterId
             });
+            
+            console.log('🩸 玩家受伤:', playerUID, '剩余血量:', player.health);
         }
     });
 
     // 玩家死亡事件
     socket.on('playerDeath', (data) => {
-        const player = players.get(socket.id);
+        const playerUID = findPlayerUIDBySocket(socket.id);
+        const player = players.get(playerUID);
         if (player) {
+            player.health = 0;
+            player.isAlive = false;
+            
             // 广播死亡事件
-            socket.to(player.roomId).emit('playerDied', {
-                playerId: socket.id,
+            socket.to(globalRoom).emit('playerDied', {
+                playerId: playerUID,
                 killerId: data.killerId,
                 timestamp: Date.now()
             });
-            console.log('💀 玩家死亡:', socket.id);
+            console.log('💀 玩家死亡:', playerUID);
         }
     });
 
     // 玩家得分事件
     socket.on('playerScore', (data) => {
-        const player = players.get(socket.id);
+        const playerUID = findPlayerUIDBySocket(socket.id);
+        const player = players.get(playerUID);
         if (player) {
             console.log('🏆 玩家得分:', player.name, data);
             
-            // 广播得分事件给房间内所有玩家
-            io.to(player.roomId).emit('playerScored', {
-                playerId: socket.id,
+            // 广播得分事件给所有玩家
+            io.to(globalRoom).emit('playerScored', {
+                playerId: playerUID,
                 playerName: player.name,
                 scoreType: data.scoreType,
                 points: data.points,
@@ -361,26 +361,22 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('👋 玩家断开连接:', socket.id);
         
-        const player = players.get(socket.id);
-        if (player) {
-            const room = gameRooms.get(player.roomId);
-            if (room) {
-                // 从房间中移除玩家
-                room.players = room.players.filter(p => p.id !== socket.id);
+        const playerUID = findPlayerUIDBySocket(socket.id);
+        if (playerUID) {
+            const player = players.get(playerUID);
+            if (player) {
+                console.log('📤 移除玩家:', player.name, playerUID);
                 
                 // 通知其他玩家
-                socket.to(player.roomId).emit('playerLeft', {
-                    playerId: socket.id,
-                    playersCount: room.players.length
+                socket.to(globalRoom).emit('playerLeft', {
+                    playerId: playerUID,
+                    playersCount: players.size - 1
                 });
                 
-                // 如果房间空了就删除房间
-                if (room.players.length === 0) {
-                    gameRooms.delete(player.roomId);
-                    console.log('🗑️ 房间已删除:', player.roomId);
-                }
+                // 移除玩家数据
+                players.delete(playerUID);
+                console.log(`✅ 玩家移除完成，当前在线: ${players.size}人`);
             }
-            players.delete(socket.id);
         }
     });
 });
