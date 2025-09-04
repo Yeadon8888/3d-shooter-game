@@ -4,10 +4,10 @@
   "description": "3D多人射击游戏 - 全栈部署版本",
   "main": "server/server.js",
   "scripts": {
-    "start": "cd server && npm install && npm start",
-    "dev": "cd server && npm run dev",
+    "start": "echo '🚀 启动全栈应用...' && cd server && npm install --production && npm start",
+    "dev": "cd server && npm run dev", 
     "install-all": "cd server && npm install && cd ../client && npm install",
-    "build": "echo 'Build complete - static files ready'",
+    "build": "echo '🔨 构建完成 - 静态文件就绪'",
     "test": "cd server && npm test"
   },
   "engines": {

@@ -26,8 +26,11 @@ app.use('/api/', limiter);
 
 // 配置CORS - Railway全栈部署支持
 const allowedOrigins = process.env.NODE_ENV === 'production' 
-    ? true  // Railway同域部署，允许所有同源请求
+    ? "*"  // Railway部署临时允许所有来源，用于调试
     : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+console.log('🔧 CORS配置:', allowedOrigins);
+console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
 
 app.use(cors({
     origin: allowedOrigins,
@@ -327,8 +330,10 @@ io.on('connection', (socket) => {
     });
 });
 
-// 启动服务器
+// 启动服务器 - Railway自动分配端口
 const PORT = process.env.PORT || 3001;
+console.log('🔧 环境变量PORT:', process.env.PORT);
+console.log('🔧 使用端口:', PORT);
 server.listen(PORT, () => {
     console.log('🚀 服务器启动成功!');
     console.log('📍 本地地址: http://localhost:' + PORT);
