@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.io连接测试</title>
+</head>
+<body>
+    <h1>Socket.io连接测试</h1>
+    <div id="status">连接中...</div>
+    <div id="log"></div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(message) {
+            console.log(message);
+            logDiv.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+        
+        log('开始连接到服务器...');
+        
+        // 自动检测服务器地址
+        const getServerUrl = () => {
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                return 'https://your-railway-domain.railway.app';
+            }
+            return 'http://localhost:3001';
+        };
+        
+        const serverUrl = getServerUrl();
+        log('连接地址: ' + serverUrl);
+        
+        const socket = io(serverUrl, {
+            transports: ['websocket', 'polling'],
+            timeout: 20000,
+            forceNew: true,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5
+        });
+        
+        socket.on('connect', () => {
+            statusDiv.textContent = '✅ 连接成功！';
+            statusDiv.style.color = 'green';
+            log('Socket.io连接成功，ID: ' + socket.id);
+        });
+        
+        socket.on('disconnect', (reason) => {
+            statusDiv.textContent = '❌ 连接断开: ' + reason;
+            statusDiv.style.color = 'red';
+            log('连接断开: ' + reason);
+        });
+        
+        socket.on('connect_error', (error) => {
+            statusDiv.textContent = '❌ 连接错误: ' + error.message;
+            statusDiv.style.color = 'red';
+            log('连接错误: ' + error.message);
+        });
+        
+        // 测试创建房间
+        setTimeout(() => {
+            if (socket.connected) {
+                log('测试创建房间...');
+                socket.emit('createRoom');
+            }
+        }, 2000);
+        
+        socket.on('roomCreated', (data) => {
+            log('房间创建成功: ' + data.roomId);
+        });
+    </script>
+</body>
+</html>

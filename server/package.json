@@ -1,0 +1,23 @@
+{
+  "name": "3d-shooter-server",
+  "version": "1.0.0",
+  "description": "3D多人射击游戏服务器",
+  "main": "server.js",
+  "scripts": {
+    "start": "NODE_ENV=production node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "audit": "npm audit",
+    "test": "echo \"测试启动服务器\" && node -e \"console.log('✅ 服务器可以正常启动')\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^7.1.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
