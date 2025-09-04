@@ -777,6 +777,7 @@
                         case 'KeyA': this.keys.left = true; break;
                         case 'KeyD': this.keys.right = true; break;
                         case 'KeyR': this.reload(); break;
+                        case 'KeyT': this.debugMultiplayerStatus(); break; // 调试多人状态
                         case 'Escape': this.togglePauseMenu(); break;
                     }
                 });
@@ -1526,12 +1527,15 @@
                     otherPlayer.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
                     console.log('🎯 使用服务器提供的初始位置:', initialPosition);
                 } else {
+                    // 确保其他玩家在本地玩家附近可见范围内
+                    const localX = this.player ? this.player.position.x : 0;
+                    const localZ = this.player ? this.player.position.z : 0;
                     otherPlayer.position.set(
-                        Math.random() * 10 - 5, // 随机X位置 (-5 to 5)
+                        localX + (Math.random() * 6 - 3), // 在本地玩家周围3米范围
                         1, 
-                        Math.random() * 10 - 5  // 随机Z位置 (-5 to 5)
+                        localZ + (Math.random() * 6 - 3)
                     );
-                    console.log('🎲 使用随机初始位置:', otherPlayer.position);
+                    console.log('🎲 在本地玩家附近设置位置:', otherPlayer.position);
                 }
                 otherPlayer.castShadow = true;
                 
@@ -1587,6 +1591,27 @@
                 
                 console.log('✅ 真人玩家创建成功:', playerId, '位置:', otherPlayer.position);
                 console.log('🗺️ 当前场景中玩家数量 - 真人:', this.getRealPlayersCount(), '总数:', this.otherPlayers.size);
+                
+                // 🔍 验证3D对象是否真的在场景中
+                const sceneChildren = this.scene.children.filter(child => 
+                    child.userData && child.userData.isRealPlayer
+                );
+                console.log('🔍 场景中真人玩家对象数量:', sceneChildren.length);
+                console.log('🔍 新玩家在场景中位置:', otherPlayer.position.x, otherPlayer.position.y, otherPlayer.position.z);
+                console.log('🔍 新玩家可见性:', otherPlayer.visible);
+                console.log('🔍 新玩家材质颜色:', otherPlayer.material.color);
+                
+                // 🎯 计算与本地玩家的距离
+                if (this.player) {
+                    const distance = this.player.position.distanceTo(otherPlayer.position);
+                    console.log('📏 新玩家距离本地玩家:', distance, '米');
+                    console.log('📍 本地玩家位置:', this.player.position.x, this.player.position.y, this.player.position.z);
+                    console.log('📍 相机位置:', this.camera.position.x, this.camera.position.y, this.camera.position.z);
+                    
+                    if (distance > 100) {
+                        console.log('⚠️ 玩家距离过远，可能看不见');
+                    }
+                }
                 
                 // 欢迎消息
                 this.showPlayerJoinMessage(displayName);
@@ -2110,6 +2135,41 @@
                 console.log('🔄 NPC重生:', userData.name);
             }
             
+            // 🔍 多人联机调试状态（按T键调用）
+            debugMultiplayerStatus() {
+                console.log('🔍 === 多人联机调试状态 ===');
+                console.log('🎮 多人模式:', this.isMultiplayer);
+                console.log('🆔 本地玩家UID:', this.playerUID);
+                console.log('📍 本地玩家位置:', this.player ? this.player.position : '未创建');
+                console.log('📷 相机位置:', this.camera ? this.camera.position : '未创建');
+                console.log('👥 其他玩家数量:', this.otherPlayers.size);
+                
+                // 显示所有其他玩家的详细信息
+                this.otherPlayers.forEach((player, playerId) => {
+                    console.log(`👤 玩家 ${playerId}:`, {
+                        名称: player.userData.name,
+                        位置: player.position,
+                        可见: player.visible,
+                        是否真人: player.userData.isRealPlayer,
+                        距离: this.player ? this.player.position.distanceTo(player.position) : '无法计算'
+                    });
+                });
+                
+                // 显示场景中的玩家对象
+                const sceneRealPlayers = this.scene.children.filter(child => 
+                    child.userData && child.userData.isRealPlayer
+                );
+                console.log('🎬 场景中真人玩家对象数量:', sceneRealPlayers.length);
+                
+                // 创建可视化提示
+                alert(`多人联机状态调试：
+                • 多人模式: ${this.isMultiplayer}
+                • 本地玩家UID: ${this.playerUID}
+                • 其他玩家数量: ${this.otherPlayers.size}
+                • 场景中玩家对象: ${sceneRealPlayers.length}
+                详细信息请查看控制台`);
+            }
+            
             // NPC射击（带射击冷却）
             npcShoot(npc) {
                 if (!this.player || !npc.userData.isAlive) return;
@@ -2373,10 +2433,17 @@
             
             // 多人联机：更新其他玩家位置
             updateOtherPlayerPosition(playerId, position, rotation) {
+                console.log('🔄 尝试更新玩家位置:', playerId, position);
                 const otherPlayer = this.otherPlayers.get(playerId);
                 if (otherPlayer) {
+                    const oldPos = {x: otherPlayer.position.x, y: otherPlayer.position.y, z: otherPlayer.position.z};
                     otherPlayer.position.set(position.x, position.y, position.z);
-                    otherPlayer.rotation.y = rotation.y;
+                    if (rotation) otherPlayer.rotation.y = rotation.y;
+                    console.log('✅ 位置更新成功:', playerId, '从', oldPos, '到', position);
+                    console.log('🔍 玩家在场景中可见:', otherPlayer.visible, '位置:', otherPlayer.position);
+                } else {
+                    console.log('❌ 找不到要更新位置的玩家:', playerId);
+                    console.log('🔍 当前其他玩家列表:', Array.from(this.otherPlayers.keys()));
                 }
             }
             
@@ -2462,10 +2529,8 @@
                 
                 console.log('🎯 游戏开始！房间:', roomId);
                 
-                // 设置多人联机Socket事件监听
-                if (this.isMultiplayer) {
-                    this.setupMultiplayerEvents();
-                }
+                // 设置多人联机Socket事件监听（移除重复调用）
+                // setupMultiplayerEvents 已在上面调用过了
                 
                 // 显示控制提示
                 setTimeout(() => {
@@ -2500,26 +2565,24 @@
             
             // 多人联机：设置Socket事件监听
             setupMultiplayerEvents() {
+                console.log('🔧 设置多人联机事件监听器');
+                
+                // 移除临时监听器，设置正式监听器
+                socket.off('playerJoined');
+                
+                // 处理待处理的玩家加入事件
+                if (window.pendingPlayerJoined && window.pendingPlayerJoined.length > 0) {
+                    console.log('🔄 处理', window.pendingPlayerJoined.length, '个待处理的playerJoined事件');
+                    window.pendingPlayerJoined.forEach(data => {
+                        console.log('🔄 处理待处理事件:', data);
+                        this.handlePlayerJoined(data);
+                    });
+                    window.pendingPlayerJoined = []; // 清空待处理列表
+                }
+                
                 // 其他玩家加入
                 socket.on('playerJoined', (data) => {
-                    console.log('🎮 收到 playerJoined 事件:', data);
-                    console.log('🆔 当前玩家ID:', socket.id);
-                    console.log('🆔 加入玩家ID:', data.playerId);
-                    
-                    // 只有当不是本人时，才创建其他玩家的可视化对象
-                    if (data.playerId !== this.playerUID) {
-                        console.log('👥 创建其他真人玩家显示，位置:', data.position);
-                        this.createOtherPlayer(data.playerId, data.playerName, data.position);
-                        // 创建完成后同步显示
-                        this.syncPlayerListDisplay();
-                    } else {
-                        console.log('ℹ️ 这是本玩家的加入事件，不创建可视化对象');
-                        // 更新服务器返回的玩家数量
-                        const playersDisplay = document.getElementById('playersDisplay');
-                        if (playersDisplay) {
-                            playersDisplay.textContent = data.playersCount;
-                        }
-                    }
+                    this.handlePlayerJoined(data);
                 });
                 
                 // 其他玩家离开
@@ -2558,7 +2621,29 @@
                     this.addPlayerScore(data.playerId, data.playerName, data.scoreType, data.points);
                 });
                 
-                console.log('🌐 多人联机事件监听设置完成');
+                console.log('✅ 多人联机事件监听器设置完成');
+            }
+            
+            // 处理玩家加入事件的统一方法
+            handlePlayerJoined(data) {
+                console.log('🎮 收到 playerJoined 事件:', data);
+                console.log('🆔 当前玩家UID:', this.playerUID);
+                console.log('🆔 加入玩家ID:', data.playerId);
+                
+                // 只有当不是本人时，才创建其他玩家的可视化对象
+                if (data.playerId !== this.playerUID) {
+                    console.log('👥 创建其他真人玩家显示，位置:', data.position);
+                    this.createOtherPlayer(data.playerId, data.playerName, data.position);
+                    // 创建完成后同步显示
+                    this.syncPlayerListDisplay();
+                } else {
+                    console.log('ℹ️ 这是本玩家的加入事件，不创建可视化对象');
+                    // 更新服务器返回的玩家数量
+                    const playersDisplay = document.getElementById('playersDisplay');
+                    if (playersDisplay) {
+                        playersDisplay.textContent = data.playersCount;
+                    }
+                }
             }
         }
         
@@ -2731,6 +2816,9 @@
         }
 
         // 创建房间
+        // 临时存储待处理的玩家加入事件
+        window.pendingPlayerJoined = [];
+        
         // 加入全球多人游戏大厅
         function joinMultiplayerGame() {
             const playerName = document.getElementById('playerNameInput').value.trim();
@@ -2738,6 +2826,14 @@
                 alert('请输入你的名字！');
                 return;
             }
+            
+            // 在发送joinGame之前，先绑定临时事件监听器
+            console.log('🔧 设置临时playerJoined监听器');
+            socket.off('playerJoined'); // 移除可能存在的旧监听器
+            socket.on('playerJoined', (data) => {
+                console.log('📥 临时收到playerJoined事件，存储待处理:', data);
+                window.pendingPlayerJoined.push(data);
+            });
             
             socket.emit('joinGame', { 
                 playerName: playerName
