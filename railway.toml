@@ -1,0 +1,15 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[[services]]
+name = "backend"
+source = "./server"
+
+[services.variables]
+NODE_ENV = "production"
+PORT = "3001"

@@ -5,6 +5,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const path = require('path');
 
 // 创建Express应用
 const app = express();
@@ -23,9 +24,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// 配置CORS
+// 配置CORS - Railway全栈部署支持
 const allowedOrigins = process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com', 'https://www.your-domain.com'] 
+    ? true  // Railway同域部署，允许所有同源请求
     : ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 app.use(cors({
@@ -36,6 +37,12 @@ app.use(express.json({ limit: '10mb' }));
 
 // 提供静态文件服务（为客户端文件提供服务）
 app.use(express.static('../client'));
+
+// 根路径重定向到游戏
+app.get('/game', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/index.html'));
+});
+
 
 // 配置Socket.io
 const io = socketIo(server, {

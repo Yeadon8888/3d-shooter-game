@@ -1536,9 +1536,9 @@
         
         // 连接到后端服务器 - 自动检测环境
         const getServerUrl = () => {
-            // 生产环境检测
+            // Railway全栈部署 - 同域名
             if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                return 'https://your-railway-domain.railway.app'; // 替换为你的Railway域名
+                return window.location.origin; // 使用当前域名
             }
             return 'http://localhost:3001';
         };
