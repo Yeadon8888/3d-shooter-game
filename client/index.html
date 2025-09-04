@@ -1358,12 +1358,18 @@
             }
             
             // 多人联机：创建其他玩家
-            createOtherPlayer(playerId) {
+            createOtherPlayer(playerId, playerName = null) {
+                console.log('🎭 开始创建其他玩家:', playerId, playerName);
+                
                 const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
                 const playerMaterial = new THREE.MeshLambertMaterial({ color: 0xff0066 }); // 粉色区分
                 const otherPlayer = new THREE.Mesh(playerGeometry, playerMaterial);
                 
-                otherPlayer.position.set(0, 1, 0);
+                otherPlayer.position.set(
+                    Math.random() * 10 - 5, // 随机X位置 (-5 to 5)
+                    1, 
+                    Math.random() * 10 - 5  // 随机Z位置 (-5 to 5)
+                );
                 otherPlayer.castShadow = true;
                 
                 // 添加玩家名称标签
@@ -1371,10 +1377,13 @@
                 const context = canvas.getContext('2d');
                 canvas.width = 256;
                 canvas.height = 64;
+                context.fillStyle = 'rgba(0,0,0,0.7)';
+                context.fillRect(0, 0, 256, 64);
                 context.fillStyle = '#ffffff';
-                context.font = '24px Arial';
+                context.font = '20px Arial';
                 context.textAlign = 'center';
-                context.fillText(playerId.substring(0, 8), 128, 40);
+                const displayName = playerName || playerId.substring(0, 8);
+                context.fillText(displayName, 128, 40);
                 
                 const texture = new THREE.CanvasTexture(canvas);
                 const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
@@ -1386,7 +1395,8 @@
                 this.otherPlayers.set(playerId, otherPlayer);
                 this.scene.add(otherPlayer);
                 
-                console.log('👥 创建其他玩家:', playerId);
+                console.log('✅ 其他玩家创建成功:', playerId, '位置:', otherPlayer.position);
+                console.log('🗺️ 当前场景中其他玩家数量:', this.otherPlayers.size);
             }
             
             // 多人联机：移除其他玩家
@@ -1437,12 +1447,23 @@
             
             // 启动游戏
             startGame(roomId) {
+                console.log('🚀 游戏启动，房间ID:', roomId);
                 this.isGameStarted = true;
                 this.isMultiplayer = roomId !== 'SINGLE';
                 this.roomId = roomId;
                 
+                console.log('🎮 多人模式:', this.isMultiplayer);
+                
                 document.getElementById('roomDisplay').textContent = roomId;
                 document.getElementById('instructions').style.display = 'block';
+                
+                // 初始化玩家数量显示
+                if (this.isMultiplayer) {
+                    document.getElementById('playersDisplay').textContent = '1'; // 至少有自己
+                } else {
+                    document.getElementById('playersDisplay').textContent = '1';
+                }
+                
                 this.updateHUD(); // 初始化HUD显示
                 
                 // 5秒后自动隐藏操作提示
@@ -1495,8 +1516,17 @@
             setupMultiplayerEvents() {
                 // 其他玩家加入
                 socket.on('playerJoined', (data) => {
+                    console.log('🎮 收到 playerJoined 事件:', data);
+                    console.log('🆔 当前玩家ID:', socket.id);
+                    console.log('🆔 加入玩家ID:', data.playerId);
+                    
                     if (data.playerId !== socket.id) {
-                        this.createOtherPlayer(data.playerId);
+                        console.log('👥 创建其他玩家显示');
+                        this.createOtherPlayer(data.playerId, data.playerName);
+                        document.getElementById('playersDisplay').textContent = data.playersCount;
+                        console.log('🔢 更新玩家数量显示为:', data.playersCount);
+                    } else {
+                        console.log('ℹ️ 这是本玩家加入的事件，不创建其他玩家');
                         document.getElementById('playersDisplay').textContent = data.playersCount;
                     }
                 });

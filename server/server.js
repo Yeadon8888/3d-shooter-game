@@ -162,17 +162,33 @@ io.on('connection', (socket) => {
     // 玩家创建房间
     socket.on('createRoom', () => {
         const roomId = generateRoomId();
+        const creatorName = `房主${socket.id.substring(0, 4)}`;
+        
         const room = {
             id: roomId,
-            players: [],
+            players: [{
+                id: socket.id,
+                name: creatorName,
+                joinTime: new Date()
+            }],
             createdAt: new Date()
         };
         
         gameRooms.set(roomId, room);
         socket.join(roomId);
+        players.set(socket.id, { roomId, name: creatorName });
         
-        console.log('🏠 房间创建:', roomId);
+        console.log('🏠 房间创建:', roomId, '创建者:', creatorName);
+        
+        // 通知房间创建者
         socket.emit('roomCreated', { roomId });
+        
+        // 广播玩家加入事件（房主加入）
+        io.to(roomId).emit('playerJoined', {
+            playerId: socket.id,
+            playerName: creatorName,
+            playersCount: room.players.length
+        });
     });
 
     // 玩家加入房间
@@ -214,7 +230,18 @@ io.on('connection', (socket) => {
                 
                 console.log('👤 玩家加入房间:', sanitizedName, '房间:', roomId);
                 
-                // 通知房间内所有玩家
+                // 为新玩家发送房间内现有的所有其他玩家
+                room.players.forEach(existingPlayer => {
+                    if (existingPlayer.id !== socket.id) {
+                        socket.emit('playerJoined', {
+                            playerId: existingPlayer.id,
+                            playerName: existingPlayer.name,
+                            playersCount: room.players.length
+                        });
+                    }
+                });
+                
+                // 通知房间内所有玩家有新玩家加入
                 io.to(roomId).emit('playerJoined', {
                     playerId: socket.id,
                     playerName: sanitizedName,
