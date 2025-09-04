@@ -1171,8 +1171,9 @@
                     this.gameStats.kills++;
                     this.gameStats.lastKillTime = Date.now();
                     
-                    // 增加分数
+                    // 增加分数（同步两个得分系统）
                     this.score += 100;
+                    // 注意：排行榜得分在 addLocalScore 中单独处理
                     
                     // 添加到排行榜得分系统 - 击杀小球得50分
                     this.addLocalScore('kill', 50, '小球敌人#' + enemyIndex);
@@ -1356,8 +1357,8 @@
                     currentAmmoElement.style.color = '#ff4444';
                 }
                 
-                // 更新分数和敌人数量
-                document.getElementById('scoreDisplay').textContent = this.score;
+                // 更新分数和敌人数量（使用统一的得分系统）
+                document.getElementById('scoreDisplay').textContent = this.localPlayerScore.score;
                 document.getElementById('enemyCount').textContent = this.enemies.length;
                 
                 // 更新游戏统计
@@ -1504,7 +1505,7 @@
             }
             
             // 多人联机：创建其他玩家（真人玩家）
-            createOtherPlayer(playerId, playerName = null) {
+            createOtherPlayer(playerId, playerName = null, initialPosition = null) {
                 console.log('🎭 开始创建其他真人玩家:', playerId, playerName);
                 
                 // 检查是否已存在
@@ -1520,11 +1521,18 @@
                 const playerMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff66 }); // 绿色真人玩家
                 const otherPlayer = new THREE.Mesh(playerGeometry, playerMaterial);
                 
-                otherPlayer.position.set(
-                    Math.random() * 10 - 5, // 随机X位置 (-5 to 5)
-                    1, 
-                    Math.random() * 10 - 5  // 随机Z位置 (-5 to 5)
-                );
+                // 使用初始位置或随机位置
+                if (initialPosition) {
+                    otherPlayer.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
+                    console.log('🎯 使用服务器提供的初始位置:', initialPosition);
+                } else {
+                    otherPlayer.position.set(
+                        Math.random() * 10 - 5, // 随机X位置 (-5 to 5)
+                        1, 
+                        Math.random() * 10 - 5  // 随机Z位置 (-5 to 5)
+                    );
+                    console.log('🎲 使用随机初始位置:', otherPlayer.position);
+                }
                 otherPlayer.castShadow = true;
                 
                 // 添加玩家属性（真人玩家标记）
@@ -1703,7 +1711,10 @@
             initScoreSystem() {
                 // 玩家得分状态
                 this.playerScores = new Map();
-                this.localPlayerScore = { kills: 0, deaths: 0, score: 0, name: '我' };
+                
+                // 使用实际玩家名称
+                const playerName = this.playerName || '玩家' + (this.playerUID ? this.playerUID.substring(-4) : Math.random().toString(36).substr(2, 4));
+                this.localPlayerScore = { kills: 0, deaths: 0, score: 0, name: playerName };
                 
                 // 初始化自己的得分
                 this.playerScores.set('local', this.localPlayerScore);
@@ -1733,7 +1744,7 @@
                 scores.forEach((player, index) => {
                     const rank = index + 1;
                     const rankColor = rank === 1 ? '#ffaa00' : rank === 2 ? '#c0c0c0' : rank === 3 ? '#cd7f32' : '#ffffff';
-                    const isLocal = player.name === '我';
+                    const isLocal = player.name === this.localPlayerScore.name;
                     const nameStyle = isLocal ? 'color: #00ff00; font-weight: bold;' : `color: ${rankColor};`;
                     
                     html += `
@@ -2403,6 +2414,13 @@
                 this.isMultiplayer = roomId !== 'SINGLE';
                 this.roomId = roomId;
                 
+                // 设置玩家UID和名称（多人模式）
+                if (this.isMultiplayer && window.currentPlayerUID) {
+                    this.playerUID = window.currentPlayerUID;
+                    this.playerName = window.currentPlayerName;
+                    console.log('🆔 设置玩家信息:', this.playerUID, this.playerName);
+                }
+                
                 console.log('🎮 多人模式:', this.isMultiplayer);
                 
                 // 显示适当的房间信息
@@ -2489,9 +2507,9 @@
                     console.log('🆔 加入玩家ID:', data.playerId);
                     
                     // 只有当不是本人时，才创建其他玩家的可视化对象
-                    if (data.playerId !== socket.id) {
-                        console.log('👥 创建其他真人玩家显示');
-                        this.createOtherPlayer(data.playerId, data.playerName);
+                    if (data.playerId !== this.playerUID) {
+                        console.log('👥 创建其他真人玩家显示，位置:', data.position);
+                        this.createOtherPlayer(data.playerId, data.playerName, data.position);
                         // 创建完成后同步显示
                         this.syncPlayerListDisplay();
                     } else {

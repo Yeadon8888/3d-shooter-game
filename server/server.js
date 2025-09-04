@@ -201,15 +201,16 @@ io.on('connection', (socket) => {
             
             console.log('👤 玩家加入游戏:', sanitizedName, 'UID:', playerUID);
             
-            // 向新玩家发送所有现有玩家信息
+            // 向新玩家发送所有现有玩家信息（包含位置）
             console.log(`📊 向新玩家${sanitizedName}发送${existingPlayers.length}个现有玩家`);
             existingPlayers.forEach(existingPlayer => {
                 socket.emit('playerJoined', {
                     playerId: existingPlayer.uid,
                     playerName: existingPlayer.name,
+                    position: existingPlayer.position,
                     playersCount: players.size
                 });
-                console.log(`  -> 发送现有玩家: ${existingPlayer.name} (${existingPlayer.uid})`);
+                console.log(`  -> 发送现有玩家: ${existingPlayer.name} (${existingPlayer.uid}) 位置:`, existingPlayer.position);
             });
             
             // 通知所有玩家有新玩家加入
