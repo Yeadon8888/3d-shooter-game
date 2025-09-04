@@ -4,9 +4,9 @@
   "description": "3D多人射击游戏服务器",
   "main": "server.js",
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
-    "dev": "NODE_ENV=development node server.js",
-    "prod": "NODE_ENV=production node server.js",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "prod": "node server.js",
     "audit": "npm audit",
     "test": "echo \"测试启动服务器\" && node -e \"console.log('✅ 服务器可以正常启动')\""
   },

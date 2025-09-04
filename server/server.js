@@ -180,15 +180,11 @@ io.on('connection', (socket) => {
         
         console.log('🏠 房间创建:', roomId, '创建者:', creatorName);
         
-        // 通知房间创建者
+        // 通知房间创建者 - 发送创建成功和自动加入事件
         socket.emit('roomCreated', { roomId });
+        socket.emit('joinedRoom', { roomId, playersCount: room.players.length });
         
-        // 广播玩家加入事件（房主加入）
-        io.to(roomId).emit('playerJoined', {
-            playerId: socket.id,
-            playerName: creatorName,
-            playersCount: room.players.length
-        });
+        console.log('ℹ️ 房主创建房间完成，等待其他玩家加入');
     });
 
     // 玩家加入房间
@@ -333,6 +329,15 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 心跳检测
+    socket.on('ping', (data) => {
+        // 回应客户端心跳
+        socket.emit('pong', { 
+            timestamp: data.timestamp,
+            serverTime: Date.now()
+        });
+    });
+    
     // 玩家断开连接
     socket.on('disconnect', () => {
         console.log('👋 玩家断开连接:', socket.id);

@@ -686,6 +686,7 @@
                         <div style="position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;">
                             <div style="color: #88ff88; font-size: 12px;">ROOM: <span id="roomDisplay">--</span></div>
                             <div style="color: #8888ff; font-size: 12px;">PLAYERS: <span id="playersDisplay">1</span></div>
+                            <div style="color: #ffff88; font-size: 12px;">CONNECTION: <span id="connectionStatus">🟡</span></div>
                         </div>
                         
                         <!-- 武器名称 -->
@@ -1422,12 +1423,18 @@
                 }
             }
             
-            // 多人联机：创建其他玩家
+            // 多人联机：创建其他玩家（真人玩家）
             createOtherPlayer(playerId, playerName = null) {
-                console.log('🎭 开始创建其他玩家:', playerId, playerName);
+                console.log('🎭 开始创建其他真人玩家:', playerId, playerName);
+                
+                // 检查是否已存在
+                if (this.otherPlayers.has(playerId)) {
+                    console.log('⚠️ 玩家已存在，跳过创建:', playerId);
+                    return;
+                }
                 
                 const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
-                const playerMaterial = new THREE.MeshLambertMaterial({ color: 0xff0066 }); // 粉色区分
+                const playerMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff66 }); // 绿色真人玩家
                 const otherPlayer = new THREE.Mesh(playerGeometry, playerMaterial);
                 
                 otherPlayer.position.set(
@@ -1437,31 +1444,134 @@
                 );
                 otherPlayer.castShadow = true;
                 
-                // 添加玩家名称标签
+                // 添加玩家属性（真人玩家标记）
+                otherPlayer.userData = {
+                    id: playerId,
+                    name: playerName || playerId.substring(0, 8),
+                    isRealPlayer: true, // 标记为真人玩家
+                    health: 100,
+                    maxHealth: 100,
+                    isAlive: true,
+                    lastUpdateTime: Date.now()
+                };
+                
+                // 添加玩家名称标签（蓝色边框表示真人）
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 canvas.width = 256;
                 canvas.height = 64;
-                context.fillStyle = 'rgba(0,0,0,0.7)';
+                context.fillStyle = 'rgba(0,100,255,0.8)'; // 蓝色背景
                 context.fillRect(0, 0, 256, 64);
                 context.fillStyle = '#ffffff';
-                context.font = '20px Arial';
+                context.font = 'bold 20px Arial';
                 context.textAlign = 'center';
                 const displayName = playerName || playerId.substring(0, 8);
-                context.fillText(displayName, 128, 40);
+                context.fillText('👤 ' + displayName, 128, 40);
                 
                 const texture = new THREE.CanvasTexture(canvas);
                 const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
                 const nameSprite = new THREE.Sprite(spriteMaterial);
                 nameSprite.position.set(0, 2.5, 0);
-                nameSprite.scale.set(2, 0.5, 1);
+                nameSprite.scale.set(2.5, 0.6, 1);
                 
                 otherPlayer.add(nameSprite);
+                
+                // 添加真人玩家血条
+                this.createPlayerHealthBar(otherPlayer);
+                
                 this.otherPlayers.set(playerId, otherPlayer);
                 this.scene.add(otherPlayer);
                 
-                console.log('✅ 其他玩家创建成功:', playerId, '位置:', otherPlayer.position);
-                console.log('🗺️ 当前场景中其他玩家数量:', this.otherPlayers.size);
+                console.log('✅ 真人玩家创建成功:', playerId, '位置:', otherPlayer.position);
+                console.log('🗺️ 当前场景中玩家数量 - 真人:', this.getRealPlayersCount(), '总数:', this.otherPlayers.size);
+                
+                // 欢迎消息
+                this.showPlayerJoinMessage(displayName);
+            }
+            
+            // 为真人玩家创建血条
+            createPlayerHealthBar(player) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 100;
+                canvas.height = 8;
+                const context = canvas.getContext('2d');
+                
+                // 绘制血条背景
+                context.fillStyle = 'rgba(0,0,0,0.8)';
+                context.fillRect(0, 0, 100, 8);
+                
+                // 绘制血条
+                context.fillStyle = '#00ff00';
+                context.fillRect(2, 2, 96, 4);
+                
+                const healthTexture = new THREE.CanvasTexture(canvas);
+                const healthMaterial = new THREE.SpriteMaterial({ map: healthTexture });
+                const healthBar = new THREE.Sprite(healthMaterial);
+                
+                healthBar.position.set(0, 3.0, 0);
+                healthBar.scale.set(1, 0.08, 1);
+                
+                player.add(healthBar);
+                player.userData.healthBar = healthBar;
+                player.userData.healthCanvas = canvas;
+                player.userData.healthContext = context;
+            }
+            
+            // 获取真人玩家数量
+            getRealPlayersCount() {
+                let count = 0;
+                this.otherPlayers.forEach((player) => {
+                    if (player.userData && player.userData.isRealPlayer) {
+                        count++;
+                    }
+                });
+                return count;
+            }
+            
+            // 同步玩家列表显示
+            syncPlayerListDisplay() {
+                const realPlayers = this.getRealPlayersCount();
+                const totalPlayers = realPlayers + 1; // 包括本地玩家
+                
+                const playersDisplay = document.getElementById('playersDisplay');
+                if (playersDisplay) {
+                    playersDisplay.textContent = totalPlayers;
+                }
+                
+                console.log('🔄 同步玩家列表显示 - 真人玩家:', realPlayers, '总数(含自己):', totalPlayers);
+                return totalPlayers;
+            }
+            
+            // 显示玩家加入消息
+            showPlayerJoinMessage(playerName) {
+                const joinMessage = document.createElement('div');
+                joinMessage.style.cssText = `
+                    position: fixed; top: 20px; right: 20px;
+                    background: rgba(0,255,100,0.9); color: white; padding: 10px 15px;
+                    border-radius: 5px; font-size: 16px; z-index: 1500;
+                    border: 2px solid #00ff64; animation: slideIn 0.5s ease;
+                `;
+                joinMessage.innerHTML = `👤 ${playerName} 加入了游戏！`;
+                
+                // 添加动画CSS
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { transform: translateX(300px); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                document.body.appendChild(joinMessage);
+                setTimeout(() => {
+                    if (document.body.contains(joinMessage)) {
+                        document.body.removeChild(joinMessage);
+                    }
+                    if (document.head.contains(style)) {
+                        document.head.removeChild(style);
+                    }
+                }, 3000);
             }
             
             // 单机模式：创建测试NPC
@@ -1991,9 +2101,14 @@
                 
                 // 初始化玩家数量显示和NPC
                 if (this.isMultiplayer) {
+                    console.log('🌐 多人模式启动，房间:', roomId);
                     document.getElementById('playersDisplay').textContent = '1'; // 至少有自己
                     this.setupMultiplayerEvents();
+                    
+                    // 重要：多人模式下清除所有NPC
+                    this.otherPlayers.clear();
                 } else {
+                    console.log('🤖 单机模式启动，创建测试NPC');
                     // 单机模式：创建NPC进行测试
                     document.getElementById('playersDisplay').textContent = '4'; // 3个NPC + 自己
                     this.createTestNPCs();
@@ -2055,21 +2170,28 @@
                     console.log('🆔 当前玩家ID:', socket.id);
                     console.log('🆔 加入玩家ID:', data.playerId);
                     
+                    // 只有当不是本人时，才创建其他玩家的可视化对象
                     if (data.playerId !== socket.id) {
-                        console.log('👥 创建其他玩家显示');
+                        console.log('👥 创建其他真人玩家显示');
                         this.createOtherPlayer(data.playerId, data.playerName);
-                        document.getElementById('playersDisplay').textContent = data.playersCount;
-                        console.log('🔢 更新玩家数量显示为:', data.playersCount);
+                        // 创建完成后同步显示
+                        this.syncPlayerListDisplay();
                     } else {
-                        console.log('ℹ️ 这是本玩家加入的事件，不创建其他玩家');
-                        document.getElementById('playersDisplay').textContent = data.playersCount;
+                        console.log('ℹ️ 这是本玩家的加入事件，不创建可视化对象');
+                        // 更新服务器返回的玩家数量
+                        const playersDisplay = document.getElementById('playersDisplay');
+                        if (playersDisplay) {
+                            playersDisplay.textContent = data.playersCount;
+                        }
                     }
                 });
                 
                 // 其他玩家离开
                 socket.on('playerLeft', (data) => {
+                    console.log('👋 玩家离开事件:', data.playerId);
                     this.removeOtherPlayer(data.playerId);
-                    document.getElementById('playersDisplay').textContent = data.playersCount;
+                    // 同步更新玩家列表显示
+                    this.syncPlayerListDisplay();
                 });
                 
                 // 其他玩家移动
@@ -2125,6 +2247,43 @@
             forceBase64: false
         });
 
+        // 连接状态监控
+        let connectionStatus = 'connecting';
+        let lastPingTime = Date.now();
+        
+        // 心跳检测函数
+        function startHeartbeat() {
+            setInterval(() => {
+                if (socket.connected) {
+                    lastPingTime = Date.now();
+                    socket.emit('ping', { timestamp: lastPingTime });
+                }
+            }, 25000); // 每25秒发送一次心跳
+        }
+        
+        // 连接质量监控
+        function updateConnectionQuality() {
+            const connectionIndicator = document.getElementById('connectionStatus');
+            if (connectionIndicator) {
+                if (socket.connected) {
+                    const pingTime = Date.now() - lastPingTime;
+                    if (pingTime < 100) {
+                        connectionIndicator.style.color = '#00ff00'; // 绿色 - 优秀
+                        connectionIndicator.textContent = '🟢';
+                    } else if (pingTime < 300) {
+                        connectionIndicator.style.color = '#ffff00'; // 黄色 - 良好
+                        connectionIndicator.textContent = '🟡';
+                    } else {
+                        connectionIndicator.style.color = '#ff8800'; // 橙色 - 一般
+                        connectionIndicator.textContent = '🟠';
+                    }
+                } else {
+                    connectionIndicator.style.color = '#ff0000'; // 红色 - 断开
+                    connectionIndicator.textContent = '🔴';
+                }
+            }
+        }
+
         console.log('🔌 Socket.io客户端配置 (Polling Only):', {
             serverUrl: getServerUrl(),
             transports: ['polling'],
@@ -2138,11 +2297,25 @@
             console.log('📡 使用的传输方式:', socket.io.engine.transport.name);
             console.log('🔗 连接URL:', socket.io.uri);
             console.log('✨ 连接成功，WebSocket错误可以忽略');
+            
+            connectionStatus = 'connected';
+            startHeartbeat(); // 启动心跳检测
+            setInterval(updateConnectionQuality, 5000); // 每5秒更新连接质量
+            
+            // 处理服务器心跳响应
+            socket.on('pong', (data) => {
+                const roundTripTime = Date.now() - data.timestamp;
+                console.log('🏓 心跳往返时间:', roundTripTime + 'ms');
+                lastPingTime = data.timestamp; // 更新最后心跳时间用于连接质量计算
+            });
+            
             showMainMenu();
         });
 
         socket.on('disconnect', () => {
             console.log('❌ 与服务器断开连接');
+            connectionStatus = 'disconnected';
+            updateConnectionQuality(); // 立即更新连接状态显示
             updateStatus('disconnected');
         });
 
