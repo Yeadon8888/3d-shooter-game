@@ -34,13 +34,17 @@
         log('连接地址: ' + serverUrl);
         
         const socket = io(serverUrl, {
-            transports: ['websocket', 'polling'],
+            transports: ['polling', 'websocket'], // 优先polling
             timeout: 20000,
             forceNew: true,
             reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 5
+            reconnectionDelay: 2000,
+            reconnectionAttempts: 10,
+            upgrade: true,
+            rememberUpgrade: false
         });
+        
+        log('🔌 尝试连接方式: polling -> websocket');
         
         socket.on('connect', () => {
             statusDiv.textContent = '✅ 连接成功！';

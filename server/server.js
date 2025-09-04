@@ -47,24 +47,25 @@ app.get('/game', (req, res) => {
 });
 
 
-// 配置Socket.io
+// 配置Socket.io - Railway优化配置
 const io = socketIo(server, {
     cors: {
-        origin: allowedOrigins,
+        origin: "*", // Railway临时允许所有来源
         methods: ["GET", "POST"],
-        credentials: true
+        credentials: false // Railway建议设为false
     },
     allowEIO3: true,
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'], // 优先polling，降级到websocket
     pingTimeout: 60000,
     pingInterval: 25000,
-    maxHttpBufferSize: 1e6, // 1MB限制
-    allowRequest: (req, callback) => {
-        // 基础安全检查
-        const isOriginValid = !req.headers.origin || allowedOrigins.includes(req.headers.origin);
-        callback(null, isOriginValid);
-    }
+    maxHttpBufferSize: 1e6,
+    upgradeTimeout: 30000,
+    // Railway WebSocket支持配置
+    serveClient: false,
+    cookie: false
 });
+
+console.log('🔌 Socket.io服务器已配置，支持的传输方式:', ['polling', 'websocket']);
 
 // 存储游戏房间和玩家信息
 const gameRooms = new Map();

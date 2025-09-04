@@ -1544,14 +1544,23 @@
         };
         
         const socket = io(getServerUrl(), {
-            transports: ['websocket', 'polling'],
+            transports: ['polling', 'websocket'], // 优先polling，避免WebSocket连接问题
             timeout: 20000,
             forceNew: true,
             reconnection: true,
-            reconnectionDelay: 1000,
+            reconnectionDelay: 2000,
+            reconnectionDelayMax: 5000,
             reconnectionAttempts: 5,
             maxReconnectionAttempts: 5,
-            secure: window.location.protocol === 'https:'
+            randomizationFactor: 0.5,
+            upgrade: true, // 允许从polling升级到websocket
+            rememberUpgrade: false // 不记住升级，每次重新尝试
+        });
+
+        console.log('🔌 Socket.io客户端配置:', {
+            serverUrl: getServerUrl(),
+            transports: ['polling', 'websocket'],
+            protocol: window.location.protocol
         });
         
         // 连接状态显示
