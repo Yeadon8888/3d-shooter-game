@@ -1355,6 +1355,11 @@
                         y: this.cameraRotation.y
                     }
                 });
+                
+                // 调试：每5秒打印一次位置同步信息
+                if (now % 5000 < 100) {
+                    console.log('📍 发送位置更新:', this.player.position, '其他玩家数:', this.otherPlayers.size);
+                }
             }
             
             // 多人联机：创建其他玩家
@@ -1397,6 +1402,159 @@
                 
                 console.log('✅ 其他玩家创建成功:', playerId, '位置:', otherPlayer.position);
                 console.log('🗺️ 当前场景中其他玩家数量:', this.otherPlayers.size);
+            }
+            
+            // 单机模式：创建测试NPC
+            createTestNPCs() {
+                console.log('🤖 创建测试NPC');
+                
+                const npcData = [
+                    { id: 'npc1', name: '机器人Alpha', color: 0x00ff00, pos: [5, 1, 5] },
+                    { id: 'npc2', name: '机器人Beta', color: 0x0066ff, pos: [-5, 1, 5] },
+                    { id: 'npc3', name: '机器人Gamma', color: 0xff6600, pos: [0, 1, -8] }
+                ];
+                
+                npcData.forEach(npc => {
+                    this.createNPC(npc.id, npc.name, npc.color, npc.pos);
+                });
+                
+                // 启动NPC AI行为
+                this.startNPCAI();
+            }
+            
+            // 创建单个NPC
+            createNPC(npcId, npcName, color, position) {
+                const npcGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
+                const npcMaterial = new THREE.MeshLambertMaterial({ color: color });
+                const npc = new THREE.Mesh(npcGeometry, npcMaterial);
+                
+                npc.position.set(position[0], position[1], position[2]);
+                npc.castShadow = true;
+                
+                // 添加NPC名称标签
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 64;
+                context.fillStyle = 'rgba(0,0,0,0.8)';
+                context.fillRect(0, 0, 256, 64);
+                context.fillStyle = '#ffffff';
+                context.font = '20px Arial';
+                context.textAlign = 'center';
+                context.fillText(npcName, 128, 40);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const nameSprite = new THREE.Sprite(spriteMaterial);
+                nameSprite.position.set(0, 2.5, 0);
+                nameSprite.scale.set(2, 0.5, 1);
+                
+                npc.add(nameSprite);
+                
+                // 添加NPC属性
+                npc.userData = {
+                    id: npcId,
+                    name: npcName,
+                    health: 100,
+                    isNPC: true,
+                    lastMoveTime: Date.now(),
+                    moveDirection: new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        0,
+                        (Math.random() - 0.5) * 2
+                    ).normalize()
+                };
+                
+                this.otherPlayers.set(npcId, npc);
+                this.scene.add(npc);
+                
+                console.log('🤖 NPC创建成功:', npcName, '位置:', position);
+            }
+            
+            // 启动NPC AI
+            startNPCAI() {
+                console.log('🧠 启动NPC AI系统');
+                
+                setInterval(() => {
+                    if (!this.isGameStarted) return;
+                    
+                    this.otherPlayers.forEach((npc, npcId) => {
+                        if (npc.userData && npc.userData.isNPC) {
+                            this.updateNPCBehavior(npc);
+                        }
+                    });
+                }, 1000); // 每秒更新NPC行为
+            }
+            
+            // 更新NPC行为
+            updateNPCBehavior(npc) {
+                const now = Date.now();
+                const userData = npc.userData;
+                
+                // 随机移动
+                if (now - userData.lastMoveTime > 2000) { // 每2秒改变方向
+                    userData.moveDirection = new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        0,
+                        (Math.random() - 0.5) * 2
+                    ).normalize();
+                    userData.lastMoveTime = now;
+                }
+                
+                // 移动NPC
+                const moveSpeed = 0.05;
+                npc.position.x += userData.moveDirection.x * moveSpeed;
+                npc.position.z += userData.moveDirection.z * moveSpeed;
+                
+                // 边界检查
+                const boundary = 15;
+                if (Math.abs(npc.position.x) > boundary) {
+                    npc.position.x = Math.sign(npc.position.x) * boundary;
+                    userData.moveDirection.x *= -1;
+                }
+                if (Math.abs(npc.position.z) > boundary) {
+                    npc.position.z = Math.sign(npc.position.z) * boundary;
+                    userData.moveDirection.z *= -1;
+                }
+                
+                // 面向移动方向
+                npc.lookAt(
+                    npc.position.x + userData.moveDirection.x,
+                    npc.position.y,
+                    npc.position.z + userData.moveDirection.z
+                );
+                
+                // 随机射击（向玩家方向）
+                if (Math.random() < 0.02) { // 2%概率射击
+                    this.npcShoot(npc);
+                }
+            }
+            
+            // NPC射击
+            npcShoot(npc) {
+                if (!this.player) return;
+                
+                const shootDirection = new THREE.Vector3();
+                shootDirection.subVectors(this.player.position, npc.position).normalize();
+                
+                // 创建NPC子弹效果
+                const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+                const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+                const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+                
+                bullet.position.copy(npc.position);
+                bullet.position.y += 1;
+                bullet.userData = {
+                    direction: shootDirection,
+                    speed: 0.5,
+                    isNPCBullet: true,
+                    shooter: npc.userData.id
+                };
+                
+                this.scene.add(bullet);
+                this.bullets.push(bullet);
+                
+                console.log('🤖💥 NPC射击:', npc.userData.name);
             }
             
             // 多人联机：移除其他玩家
@@ -1457,11 +1615,14 @@
                 document.getElementById('roomDisplay').textContent = roomId;
                 document.getElementById('instructions').style.display = 'block';
                 
-                // 初始化玩家数量显示
+                // 初始化玩家数量显示和NPC
                 if (this.isMultiplayer) {
                     document.getElementById('playersDisplay').textContent = '1'; // 至少有自己
+                    this.setupMultiplayerEvents();
                 } else {
-                    document.getElementById('playersDisplay').textContent = '1';
+                    // 单机模式：创建NPC进行测试
+                    document.getElementById('playersDisplay').textContent = '4'; // 3个NPC + 自己
+                    this.createTestNPCs();
                 }
                 
                 this.updateHUD(); // 初始化HUD显示
@@ -1539,6 +1700,7 @@
                 
                 // 其他玩家移动
                 socket.on('playerMoved', (data) => {
+                    console.log('🚶 收到玩家移动:', data.playerId, data.position);
                     this.updateOtherPlayerPosition(data.playerId, data.position, data.rotation);
                 });
                 
@@ -1703,17 +1865,33 @@
 
         // Socket事件处理
         socket.on('roomCreated', (data) => {
-            document.getElementById('menuResult').innerHTML = 
-                `🏠 房间创建成功！<br>房间号: <strong>${data.roomId}</strong><br>🔄 正在启动游戏...`;
+            const copyButton = `<button onclick="copyRoomId('${data.roomId}')" style="
+                background: #28a745; color: white; border: none; padding: 8px 16px; 
+                border-radius: 4px; cursor: pointer; margin: 10px 5px;
+                font-size: 14px; transition: background-color 0.3s;">
+                📋 复制房间号
+            </button>`;
             
-            setTimeout(() => startGame(data.roomId), 1500);
+            document.getElementById('menuResult').innerHTML = 
+                `🏠 房间创建成功！<br>
+                房间号: <strong style="font-size: 24px; color: #00ff00;">${data.roomId}</strong><br>
+                ${copyButton}<br>
+                <div id="countdown" style="font-size: 20px; color: #ffff00; margin-top: 10px;">
+                    5秒后自动进入游戏...
+                </div>`;
+            
+            startCountdown(5, () => startGame(data.roomId));
         });
 
         socket.on('joinedRoom', (data) => {
             document.getElementById('menuResult').innerHTML = 
-                `👤 成功加入房间: <strong>${data.roomId}</strong><br>当前人数: ${data.playersCount}<br>🔄 正在启动游戏...`;
+                `👤 成功加入房间: <strong style="color: #00ff00; font-size: 18px;">${data.roomId}</strong><br>
+                当前人数: <strong style="color: #ffff00;">${data.playersCount}</strong><br>
+                <div id="countdown" style="font-size: 20px; color: #ffff00; margin-top: 10px;">
+                    3秒后自动进入游戏...
+                </div>`;
             
-            setTimeout(() => startGame(data.roomId), 1500);
+            startCountdown(3, () => startGame(data.roomId));
         });
 
         socket.on('error', (error) => {
@@ -1729,6 +1907,87 @@
             setTimeout(() => {
                 startGame('SINGLE');
             }, 1000);
+        }
+
+        // 复制房间号到剪贴板
+        function copyRoomId(roomId) {
+            navigator.clipboard.writeText(roomId).then(() => {
+                // 显示复制成功提示
+                const button = event.target;
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ 已复制!';
+                button.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.style.background = '#28a745';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                // 备用方法：选择文本
+                const textArea = document.createElement('textarea');
+                textArea.value = roomId;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('房间号已复制: ' + roomId);
+                } catch(err) {
+                    alert('复制失败，房间号是: ' + roomId);
+                }
+                document.body.removeChild(textArea);
+            });
+        }
+
+        // 倒计时功能
+        let currentTimer = null;
+        function startCountdown(seconds, callback) {
+            let remaining = seconds;
+            const countdownElement = document.getElementById('countdown');
+            
+            if (currentTimer) {
+                clearInterval(currentTimer);
+            }
+            
+            currentTimer = setInterval(() => {
+                remaining--;
+                if (remaining > 0) {
+                    countdownElement.innerHTML = `${remaining}秒后自动进入游戏... 
+                        <button onclick="skipCountdown()" style="
+                            background: #007bff; color: white; border: none; padding: 4px 8px;
+                            border-radius: 3px; cursor: pointer; margin-left: 10px; font-size: 12px;">
+                            立即进入
+                        </button>`;
+                } else {
+                    clearInterval(currentTimer);
+                    currentTimer = null;
+                    countdownElement.textContent = '正在启动游戏...';
+                    callback();
+                }
+            }, 1000);
+            
+            // 存储callback供skipCountdown使用
+            window.countdownCallback = callback;
+            
+            // 添加立即进入按钮到初始显示
+            countdownElement.innerHTML = `${remaining}秒后自动进入游戏... 
+                <button onclick="skipCountdown()" style="
+                    background: #007bff; color: white; border: none; padding: 4px 8px;
+                    border-radius: 3px; cursor: pointer; margin-left: 10px; font-size: 12px;">
+                    立即进入
+                </button>`;
+        }
+        
+        function skipCountdown() {
+            if (currentTimer) {
+                clearInterval(currentTimer);
+                currentTimer = null;
+            }
+            document.getElementById('countdown').textContent = '正在启动游戏...';
+            if (window.countdownCallback) {
+                window.countdownCallback();
+                window.countdownCallback = null;
+            }
         }
         
         // ESC菜单控制函数
