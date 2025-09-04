@@ -1544,28 +1544,34 @@
         };
         
         const socket = io(getServerUrl(), {
-            transports: ['polling', 'websocket'], // 优先polling，避免WebSocket连接问题
+            transports: ['polling'], // 强制只使用polling
             timeout: 20000,
             forceNew: true,
             reconnection: true,
-            reconnectionDelay: 2000,
+            reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            reconnectionAttempts: 5,
-            maxReconnectionAttempts: 5,
+            reconnectionAttempts: 10,
+            maxReconnectionAttempts: 10,
             randomizationFactor: 0.5,
-            upgrade: true, // 允许从polling升级到websocket
-            rememberUpgrade: false // 不记住升级，每次重新尝试
+            upgrade: false, // 禁止升级到WebSocket
+            rememberUpgrade: false,
+            autoConnect: true,
+            forceBase64: false
         });
 
-        console.log('🔌 Socket.io客户端配置:', {
+        console.log('🔌 Socket.io客户端配置 (Polling Only):', {
             serverUrl: getServerUrl(),
-            transports: ['polling', 'websocket'],
-            protocol: window.location.protocol
+            transports: ['polling'],
+            protocol: window.location.protocol,
+            upgrade: false
         });
         
         // 连接状态显示
         socket.on('connect', () => {
             console.log('✅ 成功连接到服务器!', socket.id);
+            console.log('📡 使用的传输方式:', socket.io.engine.transport.name);
+            console.log('🔗 连接URL:', socket.io.uri);
+            console.log('✨ 连接成功，WebSocket错误可以忽略');
             showMainMenu();
         });
 
@@ -1577,6 +1583,13 @@
         socket.on('connect_error', (error) => {
             console.log('⚠️ 连接服务器失败:', error);
             console.log('错误详情:', error.message, error.type, error.description);
+            console.log('📡 尝试的传输方式:', socket.io.opts.transports);
+            console.log('🔗 连接URL:', socket.io.uri);
+            console.log('⚙️ Socket.io配置:', {
+                transports: socket.io.opts.transports,
+                upgrade: socket.io.opts.upgrade,
+                rememberUpgrade: socket.io.opts.rememberUpgrade
+            });
             updateStatus('error');
         });
         

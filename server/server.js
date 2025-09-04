@@ -47,25 +47,28 @@ app.get('/game', (req, res) => {
 });
 
 
-// 配置Socket.io - Railway优化配置
+// 配置Socket.io - 强制Polling模式（Railway WebSocket不稳定）
 const io = socketIo(server, {
     cors: {
-        origin: "*", // Railway临时允许所有来源
-        methods: ["GET", "POST"],
-        credentials: false // Railway建议设为false
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        credentials: false
     },
     allowEIO3: true,
-    transports: ['polling', 'websocket'], // 优先polling，降级到websocket
+    transports: ['polling'], // 只使用polling，完全禁用websocket
     pingTimeout: 60000,
     pingInterval: 25000,
     maxHttpBufferSize: 1e6,
-    upgradeTimeout: 30000,
-    // Railway WebSocket支持配置
+    // Railway优化配置
     serveClient: false,
-    cookie: false
+    cookie: false,
+    allowUpgrades: false // 禁止升级到WebSocket
 });
 
-console.log('🔌 Socket.io服务器已配置，支持的传输方式:', ['polling', 'websocket']);
+console.log('🔌 Socket.io服务器配置完成');
+console.log('📡 传输方式: polling only (WebSocket已禁用)');
+console.log('🌍 CORS: 允许所有来源');
+console.log('⚙️ 环境:', process.env.NODE_ENV || 'development');
 
 // 存储游戏房间和玩家信息
 const gameRooms = new Map();

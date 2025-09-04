@@ -34,17 +34,18 @@
         log('连接地址: ' + serverUrl);
         
         const socket = io(serverUrl, {
-            transports: ['polling', 'websocket'], // 优先polling
+            transports: ['polling'], // 强制只使用polling
             timeout: 20000,
             forceNew: true,
             reconnection: true,
-            reconnectionDelay: 2000,
-            reconnectionAttempts: 10,
-            upgrade: true,
-            rememberUpgrade: false
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 15,
+            upgrade: false, // 完全禁用WebSocket升级
+            rememberUpgrade: false,
+            autoConnect: true
         });
         
-        log('🔌 尝试连接方式: polling -> websocket');
+        log('🔌 连接方式: polling only (已禁用WebSocket)');
         
         socket.on('connect', () => {
             statusDiv.textContent = '✅ 连接成功！';
