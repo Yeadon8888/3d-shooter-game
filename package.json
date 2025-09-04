@@ -1,0 +1,23 @@
+{
+  "name": "3d-shooter-game",
+  "version": "1.0.0",
+  "description": "3D多人射击游戏 - 全栈部署版本",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "cd server && npm install && npm start",
+    "dev": "cd server && npm run dev",
+    "install-all": "cd server && npm install && cd ../client && npm install",
+    "build": "echo 'Build complete - static files ready'",
+    "test": "cd server && npm test"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": ["game", "3d", "shooter", "multiplayer", "threejs", "socketio"],
+  "author": "3D Shooter Game Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/3d-shooter-game.git"
+  }
+}
